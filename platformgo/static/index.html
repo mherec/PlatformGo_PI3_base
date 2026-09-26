@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PlatformGo</title>
+<style>
+  :root { --bg:#0f1115; --card:#181b22; --line:#2a2f3a; --fg:#e6e8ec; --mute:#8b93a3; --acc:#4da3ff; --ok:#3ecf8e; --bad:#ff5d5d; }
+  * { box-sizing: border-box; }
+  body { margin:0; font:14px/1.4 system-ui, sans-serif; background:var(--bg); color:var(--fg); }
+  header { display:flex; gap:12px; align-items:center; flex-wrap:wrap; padding:12px 16px; border-bottom:1px solid var(--line); }
+  header h1 { font-size:16px; margin:0 12px 0 0; }
+  .pill { padding:2px 8px; border-radius:99px; background:var(--card); border:1px solid var(--line); color:var(--mute); font-size:12px; }
+  .pill.ok { color:var(--ok); border-color:var(--ok); } .pill.bad { color:var(--bad); border-color:var(--bad); }
+  main { display:grid; grid-template-columns:repeat(auto-fill, minmax(320px, 1fr)); gap:12px; padding:12px 16px; }
+  section { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:12px; min-width:0; }
+  h2 { font-size:14px; margin:0 0 10px; display:flex; justify-content:space-between; align-items:center; }
+  .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin:6px 0; }
+  button { background:#232834; color:var(--fg); border:1px solid var(--line); border-radius:6px; padding:5px 10px; cursor:pointer; font:inherit; }
+  button:hover { border-color:var(--acc); } button.on { background:var(--acc); color:#000; }
+  input, textarea, select { background:#10131a; color:var(--fg); border:1px solid var(--line); border-radius:6px; padding:5px 7px; font:inherit; }
+  input[type=color] { padding:0; width:36px; height:28px; }
+  input[type=number] { width:70px; } input[type=range] { flex:1; }
+  textarea { width:100%; font-family:ui-monospace, monospace; font-size:12px; min-height:90px; }
+  .log { height:180px; overflow:auto; font-family:ui-monospace, monospace; font-size:12px; background:#10131a; border:1px solid var(--line); border-radius:6px; padding:6px; white-space:pre-wrap; word-break:break-all; }
+  .dot { width:10px; height:10px; border-radius:50%; background:#444; display:inline-block; }
+  .dot.hi { background:var(--ok); }
+  label { color:var(--mute); } .full { grid-column:1/-1; }
+  .px { display:flex; gap:4px; flex-wrap:wrap; }
+</style>
+</head>
+<body>
+<header>
+  <h1>PlatformGo</h1>
+  <span id="conn" class="pill bad">offline</span>
+  <span id="sys" class="pill">–</span>
+  <span id="cloud" class="pill">cloud: –</span>
+</header>
+<main>
+  <section>
+    <h2>LED WS2812 <span id="leds-st" class="pill">–</span></h2>
+    <div class="row"><label>Liczba diod</label><input id="led-count" type="number" min="1" max="1000">
+      <label>Kolejność</label><select id="led-order"><option>GRB</option><option>RGB</option><option>BRG</option></select>
+      <button onclick="saveLedCfg()">Zapisz</button></div>
+    <div class="row"><label>Jasność</label><input id="led-bri" type="range" min="0" max="255" onchange="saveLedCfg()"></div>
+    <div class="row"><label>Kolor</label><input id="led-color" type="color" value="#ff7800">
+      <label>Prędkość</label><input id="led-speed" type="range" min="0.1" max="5" step="0.1" value="1"></div>
+    <div class="row" id="effects"></div>
+    <div class="row"><label>Piksele</label></div>
+    <div class="px" id="pixels"></div>
+    <div class="row"><button onclick="sendPixels()">Wyślij piksele</button></div>
+  </section>
+
+  <section>
+    <h2>Audio <span id="audio-st" class="pill">–</span></h2>
+    <div class="row" id="sounds"></div>
+    <div class="row"><label>Głośność</label><input id="vol" type="range" min="0" max="100"
+      onchange="act('audio.volume',{percent:+this.value})"><button onclick="act('audio.stop')">Stop</button></div>
+    <div class="row"><label>Teraz:</label><span id="playing">–</span></div>
+  </section>
+
+  <section>
+    <h2>UART /dev/ttyS0 <span id="uart-st" class="pill">–</span></h2>
+    <div class="log" id="uart-log"></div>
+    <div class="row"><input id="uart-in" style="flex:1" placeholder="tekst (Enter = wyślij)">
+      <label><input type="checkbox" id="uart-hex"> hex</label><button onclick="uartSend()">Wyślij</button></div>
+  </section>
+
+  <section>
+    <h2>GPIO <span id="gpio-st" class="pill">–</span></h2>
+    <div id="gpio-list"></div>
+    <details><summary>Konfiguracja pinów (JSON)</summary>
+      <textarea id="gpio-cfg"></textarea>
+      <div class="row"><button onclick="saveJson('gpio-cfg', v => ({gpio:{pins:v}}))">Zapisz</button>
+        <label>np. [{"name":"btn1","pin":17,"mode":"in","pull":"up"},{"name":"rel1","pin":27,"mode":"out"}]</label></div>
+    </details>
+  </section>
+
+  <section>
+    <h2>BLE (serwer GATT) <span id="ble-st" class="pill">–</span></h2>
+    <div id="ble-info" class="row"></div>
+    <div id="ble-list"></div>
+    <details><summary>Grupy / dostęp (JSON)</summary>
+      <textarea id="ble-cfg"></textarea>
+      <div class="row"><button onclick="saveJson('ble-cfg', v => ({ble:v}))">Zapisz</button></div>
+    </details>
+  </section>
+
+  <section class="full">
+    <h2>Zdarzenia <button onclick="$('events').textContent=''">Wyczyść</button></h2>
+    <div class="log" id="events"></div>
+  </section>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+const EFFECTS = ["off","solid","rainbow","breathe","chase"];
+let ws, cfg = {}, reqId = 0, ledState = {};
+
+async function api(path, opts = {}) {
+  const r = await fetch(path, {headers: {"Content-Type": "application/json"}, ...opts});
+  const j = await r.json(); if (!r.ok || j.ok === false) throw new Error(j.error || r.status); return j;
+}
+function act(action, params = {}) {
+  if (ws && ws.readyState === 1) ws.send(JSON.stringify({action, params, id: ++reqId}));
+  else api("/api/action/" + action, {method: "POST", body: JSON.stringify(params)}).catch(e => logEv({type:"error", error:e.message}));
+}
+function logEv(e) {
+  const el = $("events"), t = new Date((e.ts || Date.now()/1000) * 1000).toLocaleTimeString();
+  el.textContent += `${t} ${JSON.stringify(e)}\n`;
+  if (el.textContent.length > 20000) el.textContent = el.textContent.slice(-15000);
+  el.scrollTop = el.scrollHeight;
+}
+const hex2rgb = h => [1,3,5].map(i => parseInt(h.slice(i, i+2), 16));
+const rgb2hex = c => "#" + c.map(v => v.toString(16).padStart(2, "0")).join("");
+function pill(id, st) {
+  const el = $(id); el.textContent = st.available ? "ok" : (st.error || "niedostępne");
+  el.className = "pill " + (st.available ? "ok" : "bad"); el.title = st.error || "";
+}
+
+// --- LED ---
+EFFECTS.forEach(ef => {
+  const b = document.createElement("button"); b.textContent = ef; b.dataset.ef = ef;
+  b.onclick = () => act("leds.set", {effect: ef, color: hex2rgb($("led-color").value), speed: +$("led-speed").value});
+  $("effects").appendChild(b);
+});
+function renderPixels() {
+  const n = (cfg.leds || {}).count || 0, box = $("pixels"), px = ledState.pixels || [];
+  box.innerHTML = "";
+  for (let i = 0; i < Math.min(n, 64); i++) {
+    const inp = document.createElement("input"); inp.type = "color";
+    inp.value = px[i] ? rgb2hex(px[i]) : "#000000"; box.appendChild(inp);
+  }
+}
+function sendPixels() { act("leds.set", {pixels: [...$("pixels").children].map(i => hex2rgb(i.value))}); }
+async function saveLedCfg() {
+  await patch({leds: {count: +$("led-count").value, order: $("led-order").value, brightness: +$("led-bri").value}});
+}
+function showLeds(s) {
+  ledState = s;
+  document.querySelectorAll("#effects button").forEach(b => b.classList.toggle("on", b.dataset.ef === s.effect));
+}
+
+// --- UART ---
+function uartSend() {
+  const v = $("uart-in").value; if (!v) return;
+  act("uart.write", $("uart-hex").checked ? {hex: v.replace(/\s/g, "")} : {data: v});
+  $("uart-in").value = "";
+}
+$("uart-in").addEventListener("keydown", e => { if (e.key === "Enter") uartSend(); });
+function uartLog(line) { const el = $("uart-log"); el.textContent += line + "\n"; el.scrollTop = el.scrollHeight; }
+
+// --- GPIO ---
+function renderGpio(st) {
+  const box = $("gpio-list"); box.innerHTML = "";
+  if (!st.pins || !st.pins.length) { box.innerHTML = '<div class="row"><label>Brak zdefiniowanych pinów</label></div>'; return; }
+  st.pins.forEach(p => {
+    const v = (st.values || {})[p.name], row = document.createElement("div"); row.className = "row";
+    row.innerHTML = `<span class="dot ${v ? "hi" : ""}" id="gpio-${p.name}"></span> <b>${p.name}</b> <label>GPIO${p.pin} ${p.mode}</label>`;
+    if (p.mode === "out") {
+      const b = document.createElement("button"); b.textContent = "toggle";
+      b.onclick = () => act("gpio.toggle", {name: p.name}); row.appendChild(b);
+    }
+    box.appendChild(row);
+  });
+}
+
+// --- BLE ---
+function renderBle(st) {
+  pill("ble-st", st);
+  $("ble-info").innerHTML = `<label>service ${st.service_uuid || "–"}</label>`;
+  const list = $("ble-list"); list.innerHTML = "";
+  (st.connected || []).forEach(d => {
+    const row = document.createElement("div"); row.className = "row";
+    row.innerHTML = `<span class="dot hi"></span> ${d.address} <label>${d.name || ""} ${d.group ? "[" + d.group + "]" : ""}</label>`;
+    const b = document.createElement("button"); b.textContent = "rozłącz";
+    b.onclick = () => act("ble.disconnect", {address: d.address}); row.appendChild(b); list.appendChild(row);
+  });
+  if (!list.children.length) list.innerHTML = '<div class="row"><label>Brak połączonych urządzeń</label></div>';
+}
+
+// --- config ---
+async function patch(p) { cfg = await api("/api/config", {method: "PATCH", body: JSON.stringify(p)}); fillCfg(); }
+async function saveJson(id, wrap) {
+  try { await patch(wrap(JSON.parse($(id).value))); } catch (e) { alert("Błąd: " + e.message); }
+}
+function fillCfg() {
+  $("led-count").value = cfg.leds.count; $("led-order").value = cfg.leds.order; $("led-bri").value = cfg.leds.brightness;
+  $("vol").value = cfg.audio.volume;
+  $("gpio-cfg").value = JSON.stringify(cfg.gpio.pins, null, 1);
+  $("ble-cfg").value = JSON.stringify(cfg.ble, null, 1);
+  renderPixels();
+}
+
+function applyStatus(s) {
+  pill("leds-st", s.leds); showLeds(s.leds);
+  pill("audio-st", s.audio); pill("uart-st", s.uart); pill("gpio-st", s.gpio);
+  $("playing").textContent = s.audio.playing || "–";
+  $("sounds").innerHTML = "";
+  (s.audio.sounds || []).forEach(n => {
+    const b = document.createElement("button"); b.textContent = "▶ " + n; b.onclick = () => act("audio.play", {name: n});
+    $("sounds").appendChild(b);
+  });
+  renderGpio(s.gpio); renderBle(s.ble);
+  const sy = s.system || {};
+  $("sys").textContent = [sy.cpu_temp && sy.cpu_temp.toFixed(1) + "°C",
+    sy.mem_mb && `RAM ${sy.mem_mb.available}/${sy.mem_mb.total} MB wolne`, sy.load && "load " + sy.load[0].toFixed(2)]
+    .filter(Boolean).join(" · ") || "–";
+  $("cloud").textContent = "cloud: " + (s.cloud.enabled ? (s.cloud.connected ? "połączony" : "rozłączony") : "wyłączony");
+  $("cloud").className = "pill " + (s.cloud.connected ? "ok" : "");
+}
+
+let statusTimer;
+function refreshStatus() {
+  clearTimeout(statusTimer);
+  statusTimer = setTimeout(() => api("/api/status").then(applyStatus).catch(() => {}), 300);
+}
+
+function connect() {
+  ws = new WebSocket((location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/ws");
+  ws.onopen = () => { $("conn").textContent = "online"; $("conn").className = "pill ok"; };
+  ws.onclose = () => { $("conn").textContent = "offline"; $("conn").className = "pill bad"; setTimeout(connect, 2000); };
+  ws.onmessage = m => {
+    const e = JSON.parse(m.data);
+    if (e.type === "hello") return applyStatus(e.status);
+    if (e.type === "reply") { if (!e.ok) logEv(e); return; }
+    logEv(e);
+    if (e.type === "uart.rx") uartLog("< " + e.text);
+    else if (e.type === "uart.tx") uartLog("> " + e.hex);
+    else if (e.type === "leds.state") showLeds(e);
+    else if (e.type === "gpio.input" || e.type === "gpio.output") {
+      const d = $("gpio-" + e.name); if (d) d.classList.toggle("hi", !!e.value);
+    } else if (/\.status$|^audio\.|^ble\.(dis)?connected|^ble\.rejected/.test(e.type)) refreshStatus();
+  };
+}
+
+api("/api/config").then(c => { cfg = c; fillCfg(); });
+connect();
+setInterval(refreshStatus, 10000);
+</script>
+</body>
+</html>

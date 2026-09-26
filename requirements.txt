@@ -1,0 +1,4 @@
+# Hardware libs (lgpio, gpiozero, spidev) come from apt - venv uses --system-site-packages.
+aiohttp>=3.8
+pyserial>=3.5
+bless>=0.2.6; sys_platform == "linux"

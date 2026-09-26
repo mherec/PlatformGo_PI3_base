@@ -1,0 +1,25 @@
+[Unit]
+Description=PlatformGo device service (aiohttp + hardware workers)
+After=network.target bluetooth.service sound.target
+Wants=bluetooth.service
+
+[Service]
+Type=simple
+User=platformgo
+Group=platformgo
+SupplementaryGroups=gpio spi dialout audio bluetooth
+WorkingDirectory=/var/lib/platformgo
+EnvironmentFile=-/etc/platformgo/env
+Environment=PYTHONUNBUFFERED=1 PG_DATA_DIR=/var/lib/platformgo
+ExecStart=/opt/platformgo/.venv/bin/python -m platformgo
+Restart=on-failure
+RestartSec=3
+# hardening that does not get in the way of /dev access
+NoNewPrivileges=yes
+ProtectSystem=full
+ProtectHome=yes
+PrivateTmp=yes
+ReadWritePaths=/var/lib/platformgo
+
+[Install]
+WantedBy=multi-user.target

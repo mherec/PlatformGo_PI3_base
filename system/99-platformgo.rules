@@ -1,0 +1,3 @@
+# GPIO character devices and SPI for group members (service user "platformgo")
+SUBSYSTEM=="gpio", KERNEL=="gpiochip*", GROUP="gpio", MODE="0660"
+SUBSYSTEM=="spidev", KERNEL=="spidev*", GROUP="spi", MODE="0660"
